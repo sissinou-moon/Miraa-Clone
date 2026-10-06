@@ -79,10 +79,13 @@ Request/
 ├── README.md
 ├── requirements.txt
 ├── .gitignore
+├── .env                      # ⚠️ DO NOT commit — contains secrets
+├── cookies.txt               # ⚠️ DO NOT commit — YouTube cookies (required for subtitles)
 ├── app.py                    # Main FastAPI application
-├── cookies.txt              # YouTube cookie file (optional)
-├── .env                      # Environment variables (optional)
-├── run.py                   # Entry point script
+├── russian_tts.py            # TTS handling module
+├── request.py                # Request handling module
+├── index.py                  # Main entry point
+├── download_voice_dataset.py # Voice dataset downloader
 ├── tests/
 │   └── __init__.py
 ├── src/
@@ -98,6 +101,8 @@ Request/
 └── scripts/
     └── run.py
 ```
+
+> **⚠️ IMPORTANT:** You need `cookies.txt` from your browser inorder to bypass YouTube's blocking rules and grab the subtitles. Extract these cookies from your browser's developer tools (Application > Cookies > youtube.com) and place them in the project root.
 
 ---
 
@@ -116,6 +121,12 @@ python run.py
 ```
 
 The server will start on `http://0.0.0.0:8000`.
+
+### Running the Server
+
+```bash
+python -m uvicorn app:app --host 0.0.0.0 --port 8080
+```
 
 ### API Endpoints
 
