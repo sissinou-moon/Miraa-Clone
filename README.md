@@ -1,20 +1,36 @@
-# Request
+![Shadowing App Logo](Logo.png)
 
-A Python backend project for handling HTTP requests and processing data.
+# 🇷🇺 Shadowing App — Russian Language Learning Backend
+
+> **⚠️ IMPORTANT: Local AI Model Warning**
+> This app is based on a local AI model. The current model in use is:
+> **`Qwen3.8-9B-Q4_K_M.gguf`**
+>
+> You can change to any other model by modifying the `MODEL_PATH` constant in [`app.py`](app.py#L30-L30).
+
+---
 
 ## 📖 Overview
 
-`Request` is a Python-based backend service designed to handle HTTP request processing, data validation, and response generation. It provides a robust and scalable solution for building RESTful APIs and microservices.
+`Shadowing App` is a Python FastAPI backend designed for language learning — specifically focused on **Russian**. It provides three core capabilities:
+
+1. **TTS (Text-to-Speech)** — Generate natural Russian audio for pronunciation practice.
+2. **AI Analysis** — Analyze Russian words/phrases with grammatical breakdowns and explanations.
+3. **Subtitle Translation** — Fetch and translate YouTube subtitles for shadowing practice.
+
+---
 
 ## ✨ Features
 
-- **HTTP Request Handling** – Process incoming requests with proper validation and routing.
-- **Data Validation** – Built-in schema validation for request payloads.
-- **Error Handling** – Structured error responses with appropriate HTTP status codes.
-- **Middleware Support** – Easy-to-add middleware for logging, authentication, and rate limiting.
-- **Async Support** – Asynchronous request handling for high-throughput scenarios.
-- **Documentation** – Auto-generated API documentation using docstrings.
-- **Testing** – Comprehensive test coverage with `pytest`.
+| Feature | Description |
+|---------|-------------|
+| 🗣️ **Russian TTS** | Silero TTS with multiple Russian speakers (Xenia, etc.) |
+| 🧠 **AI Analysis** | Local Qwen3.8-9B model for Russian word/phrase breakdown |
+| 📹 **YouTube Subtitles** | Fetch Russian subtitles and translate to English |
+| 🗣️ **Conversation Mode** | Interactive Russian conversation with the AI teacher |
+| 🚀 **Streaming Responses** | SSE-based token streaming for instant feedback |
+
+---
 
 ## 🛠️ Installation
 
@@ -22,13 +38,14 @@ A Python backend project for handling HTTP requests and processing data.
 
 - Python ≥ 3.9
 - pip ≥ 21.0
+- `llama-server` binary (see [installation guide](#installing-llama-server))
+- GPU with CUDA (recommended) or CPU-only setup
 
 ### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/request.git
-cd Request
+cd /home/yassine/Desktop/Coding/python/Request
 
 # Create a virtual environment
 python -m venv venv
@@ -37,22 +54,40 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Install in development mode
-pip install -e .
+# Install llama-server (if not already installed)
+pip install llama-cpp-python
+# OR download from: https://github.com/ggerganov/llama.cpp/releases
 ```
+
+### Installing llama-server
+
+```bash
+# Option 1: pip (recommended)
+pip install llama-cpp-python
+
+# Option 2: Download prebuilt binary
+# https://github.com/ggerganov/llama.cpp/releases
+```
+
+---
 
 ## 📦 Project Structure
 
 ```
 Request/
+├── Logo.png
 ├── README.md
 ├── requirements.txt
-├── setup.py
+├── .gitignore
+├── app.py                    # Main FastAPI application
+├── cookies.txt              # YouTube cookie file (optional)
+├── .env                      # Environment variables (optional)
+├── run.py                   # Entry point script
 ├── tests/
 │   └── __init__.py
 ├── src/
 │   ├── __init__.py
-│   ├── app.py
+│   ├── app.py               # Main application logic
 │   └── handlers/
 │       ├── __init__.py
 │       ├── base.py
@@ -64,6 +99,8 @@ Request/
     └── run.py
 ```
 
+---
+
 ## 🚀 Usage
 
 ### Starting the Server
@@ -72,53 +109,110 @@ Request/
 python -m src.app
 ```
 
-### Making Requests
+Or use the entry point script:
 
 ```bash
-# Example GET request
-curl -X GET "http://localhost:8000/api/users"
+python run.py
+```
 
-# Example POST request
-curl -X POST "http://localhost:8000/api/users" \
+The server will start on `http://0.0.0.0:8000`.
+
+### API Endpoints
+
+#### Health Check
+
+```bash
+curl http://localhost:8000
+```
+
+#### Russian TTS
+
+```bash
+curl -X POST "http://localhost:8000/russian-tts" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Alice", "email": "alice@example.com"}'
+  -d '{
+    "text": "Привет, как дела?",
+    "speed": 1.0,
+    "speaker": "xenia"
+  }'
 ```
 
-### Using the SDK (Python)
+#### AI Analysis
 
-```python
-from request import Client
-
-client = Client("http://localhost:8000")
-
-# Get a user
-user = client.get("/api/users/1")
-
-# Create a user
-new_user = client.post("/api/users", json={
-    "name": "Bob",
-    "email": "bob@example.com"
-})
+```bash
+curl -X POST "http://localhost:8000/model" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Привет",
+    "history": []
+  }'
 ```
+
+#### Video Subtitle Translation
+
+```bash
+curl -X POST "http://localhost:8000/translate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://www.youtube.com/watch?v=VIDEO_ID"
+  }'
+```
+
+---
 
 ## 🔌 API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/api/users` | List all users |
-| `GET`  | `/api/users/:id` | Get a single user |
-| `POST` | `/api/users` | Create a new user |
-| `PUT`  | `/api/users/:id` | Update a user |
-| `DELETE` | `/api/users/:id` | Delete a user |
-| `POST` | `/api/login` | Authenticate and get a token |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | `GET` | Health check |
+| `/russian-tts` | `POST` | Generate Russian speech audio |
+| `/model` | `POST` | Analyze Russian text (word/phrase breakdown) |
+| `/model/video-explanation` | `POST` | Conversation mode — interactive Russian teacher |
+| `/translate` | `POST` | Translate YouTube subtitles |
 
-### Authentication
+### TTS Request Body
 
-All protected endpoints require a valid `Authorization` header:
-
-```bash
-curl -H "Authorization: Bearer <token>" "http://localhost:8000/api/users"
+```json
+{
+  "text": "Привет, мир!",
+  "speed": 1.0,
+  "speaker": "xenia"
+}
 ```
+
+### Model Request Body
+
+```json
+{
+  "text": "Привет",
+  "history": []
+}
+```
+
+### Translate Request Body
+
+```json
+{
+  "url": "https://www.youtube.com/watch?v=VIDEO_ID"
+}
+```
+
+---
+
+## 🔧 Configuration
+
+Create a `.env` file in the project root:
+
+```env
+LLAMA_SERVER_HOST=127.0.0.1
+LLAMA_SERVER_PORT=8081
+MODEL_PATH=/home/yassine/Models/Qwen3.8-9B-Q4_K_M.gguf
+SAMPLE_RATE=48000
+WEBSHARE_USERNAME=
+WEBSHARE_PASSWORD=
+```
+
+---
 
 ## 🧪 Running Tests
 
@@ -132,48 +226,45 @@ Coverage report:
 pytest --cov=src --cov-report=html
 ```
 
-## 🐳 Docker
-
-```bash
-docker-compose up --build
-```
-
-## 🔧 Configuration
-
-Create a `.env` file in the project root:
-
-```env
-HOST=0.0.0.0
-PORT=8000
-DEBUG=True
-SECRET_KEY=your-secret-key-here
-DATABASE_URL=sqlite:///./app.db
-```
+---
 
 ## 📝 API Response Examples
 
-### Success Response (200 OK)
+### TTS Response
+
+Returns an `audio/wav` stream (e.g., `tts_output.wav`).
+
+### Model Response (Streaming)
+
+```
+data: {"token":"Привет"}
+
+data: {"token":" ,"}
+
+data: {"token":" приветствие (noun) — meaning: 'hello'"}
+
+data: {"token": "..."}
+
+data: [DONE]
+```
+
+### Translate Response
 
 ```json
 {
-  "status": "success",
-  "data": {
-    "id": 1,
-    "name": "Alice",
-    "email": "alice@example.com"
-  }
+  "subtitles": [
+    {
+      "start": 5.23,
+      "end": 7.81,
+      "text": "Привет, как дела?",
+      "translation": "Hello, how are you?"
+    },
+    ...
+  ]
 }
 ```
 
-### Error Response (404 Not Found)
-
-```json
-{
-  "status": "error",
-  "code": "NOT_FOUND",
-  "message": "User not found"
-}
-```
+---
 
 ## 🤝 Contributing
 
@@ -185,19 +276,24 @@ Contributions are welcome! Please follow these steps:
 4. Push to the branch (`git push origin feature/AmazingFeature`).
 5. Open a Pull Request.
 
+---
+
 ## 📜 License
 
-This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
-
-## 👥 Authors
-
-- **Yassine** – [yassine](https://github.com/yassine)
-
-## 🙏 Acknowledgments
-
-- Inspiration from FastAPI, Flask, and other modern Python web frameworks.
-- Thanks to the open-source community!
+This project is licensed under the MIT License.
 
 ---
 
-> 💡 **Tip:** Check out the [API documentation](docs/api.md) for detailed endpoint specifications.
+## 👥 Authors
+
+- **Yassine**
+
+---
+
+## 🙏 Acknowledgments
+
+- **Silero TTS** — for the Russian voice synthesis model.
+- **Qwen3.8-9B** — the local AI model powering analysis and conversation.
+- **yt-dlp** — for YouTube subtitle extraction.
+- **Google Translate** — for subtitle translation (via `googletrans`).
+- The Russian language learning community.
