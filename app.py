@@ -36,9 +36,10 @@ SAMPLE_RATE = 48000
 
 tts_model = None
 llama_process = None
+tts_models = {}
 
 
-SYSTEM_PROMPT = """\
+RUSSIAN_PPHRASE_SYSTEM_PROMPT = """\
 You are a Russian language tutor for A1-level beginners.
 When the user gives you a Russian word or phrase, do the following concisely:
 
@@ -55,18 +56,40 @@ Do NOT write long paragraphs. Use bullet points.
 """
 
 
+ENGLISH_PPHRASE_SYSTEM_PROMPT = """\
+You are a ENGLISH language tutor for A1-level beginners.
+When the user gives you a English word or phrase, do the following concisely:
+
+1. **Translation**: Give the Russian meaning.
+2. **Word-by-word breakdown**: List each word, its part of speech (noun, verb, adjective, etc.), and meaning.
+3. **Verbs**: For each verb, state:
+   - The infinitive (base form)
+   - The root
+   - The suffix/ending used and WHY (which conjugation, tense, person, number)
+4. **Adjectives**: State gender/case agreement if relevant.
+
+Keep answers SHORT, DIRECT, and CORRECT. Use simple A1-level explanations.
+Do NOT write long paragraphs. Use bullet points.
+"""
+
+
 # ─── Lifespan: load TTS + start llama-server ─────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global tts_model, llama_process
+    global tts_model, llama_process, tts_models
 
     # Load Silero TTS
     print("⏳ Loading Silero TTS model...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, _ = silero_tts(language="ru", speaker="v5_ru")
-    model.to(device)
-    tts_model = model
+    ru_model, _ = silero_tts(language="ru", speaker="v5_ru")
+    ru_model.to(device)
+
+    en_model, _ = silero_tts(language="en", speaker="v3_en")
+    en_model.to(device)
+
+    tts_models["ru"] = ru_model
+    tts_models["en"] = en_model
     print(f"✅ Silero TTS loaded on {device}")
 
     # Start llama-server as a subprocess with GPU offload
@@ -120,6 +143,7 @@ class TTSRequest(BaseModel):
     text: str
     speed: float = 1.0
     speaker: str = "xenia"
+    language: str
 
 class Message(BaseModel):
     role: Literal["user", "assistant"]
@@ -128,6 +152,7 @@ class Message(BaseModel):
 
 class ModelRequest(BaseModel):
     text: str
+    learning_language: str
     history: list[Message] = []
 
 class ModelResponse(BaseModel):
@@ -136,6 +161,7 @@ class ModelResponse(BaseModel):
 class TranslateRequest(BaseModel):
     """Request model for the translate endpoint."""
     url: str
+    language: str
 
 
 # ─── Health check ────────────────────────────────────────────────────────────
@@ -161,7 +187,10 @@ async def russian_tts(req: TTSRequest):
         raise HTTPException(status_code=400, detail="Speed must be between 0.5 and 2.0")
 
     try:
-        audio = tts_model.apply_tts(
+        model = tts_models[req.language]
+
+
+        audio = model.apply_tts(
             text=req.text.strip(),
             speaker=req.speaker,
             sample_rate=SAMPLE_RATE,
@@ -202,9 +231,14 @@ async def model_analyze(req: ModelRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-    ]
+    if req.learning_language == "Russian":
+        messages = [
+            {"role": "system", "content": RUSSIAN_PPHRASE_SYSTEM_PROMPT},
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": ENGLISH_PPHRASE_SYSTEM_PROMPT},
+        ]
 
     # Add previous conversation
     messages.extend(
@@ -235,8 +269,7 @@ async def model_analyze(req: ModelRequest):
                     f"http://{LLAMA_SERVER_HOST}:{LLAMA_SERVER_PORT}/v1/chat/completions",
                     json={
                         "messages": messages,
-                        "temperature": 0.3,
-                        "max_tokens": 1024,
+                        "temperature": 0.4,
                         "stream": True,
                     },
                 ) as resp:
@@ -339,10 +372,10 @@ async def model_video_explanation(req: ModelRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    messages = [
-        {"role": "system", "content": """
-        You are an expert russian teacher.
-        You are a teacher for begginers.
+    if req.learning_language == "Russian":
+        messages = [
+            {"role": "system", "content": """
+        You are an expert russian teacher for begginers.
         You are an expert at explaining in simple words
         You can ask 2 questions at the end in russian + english (Like : Как тебя зовут? (Kak tebya zovut?)“What’s your name?”)
         The questions should be related to the video
@@ -352,8 +385,36 @@ async def model_video_explanation(req: ModelRequest):
         The user can answer you about the questions, so you should be able to understand the answer and respond accordingly and rate him.
 
         Keep the conversation alive and try to make him speak more and learn more.
+
+        IMPORTANT :
+        - you must explain the video and answer in English.
         """},
-    ]
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": """
+You are an expert English teacher for A1 beginners.
+
+Help the learner understand the video, learn useful English, and speak more.
+
+Rules:
+* Talk and explain and answer in Russian.
+* Use simple A1 English and short answers.
+* Explain vocabulary, grammar, and corrections in Russian.
+* Give Russian meanings for new English words.
+* Encourage the learner to answer in English.
+* Understand imperfect beginner English.
+* Correct important mistakes gently with a short explanation.
+* Praise correct answers briefly.
+* Keep the conversation natural and engaging.
+* Ask 1–2 easy questions related to the video.
+* For each question, give English + simple pronunciation + Russian meaning.
+* Ask follow-up questions when appropriate.
+* Focus on communication, vocabulary, and basic grammar, not advanced explanations.
+* Never overwhelm the learner with long paragraphs.
+* When evaluating an answer, briefly say what was good, correct important mistakes, and give a 1–10 score when appropriate.
+        """},
+        ]
 
     # Add previous conversation
     messages.extend(
@@ -384,8 +445,7 @@ async def model_video_explanation(req: ModelRequest):
                     f"http://{LLAMA_SERVER_HOST}:{LLAMA_SERVER_PORT}/v1/chat/completions",
                     json={
                         "messages": messages,
-                        "temperature": 0.3,
-                        "max_tokens": 1024,
+                        "temperature": 0.4,
                         "stream": True,
                     },
                 ) as resp:
@@ -478,7 +538,7 @@ async def model_video_explanation(req: ModelRequest):
 
 # ─── Subtitle helper functions ──────────────────────────────────────────────
 
-def _fetch_russian_subtitles(video_url: str) -> list[dict]:
+def _fetch_russian_subtitles(video_url: str, language: str = "ru") -> list[dict]:
     """
     Fetch Russian subtitles from a YouTube video using yt-dlp.
 
@@ -513,7 +573,7 @@ def _fetch_russian_subtitles(video_url: str) -> list[dict]:
             "skip_download": True,
             "writesubtitles": True,
             "writeautomaticsub": True,
-            "subtitleslangs": ["ru"],
+            "subtitleslangs": [language],
             "subtitlesformat": "json3",
 
             "remote_components": "ejs:github",
@@ -555,15 +615,15 @@ def _fetch_russian_subtitles(video_url: str) -> list[dict]:
         # Find the downloaded subtitle file
         sub_file = None
         for fname in os.listdir(tmpdir):
-            if fname.endswith(".ru.json3"):
+            if fname.endswith(f".{language}.json3"):
                 sub_file = os.path.join(tmpdir, fname)
                 break
 
         if not sub_file:
             raise HTTPException(
                 status_code=404,
-                detail="No Russian subtitles found for this video. "
-                "The video may have no captions or no Russian track.",
+                detail="No " + language + " subtitles found for this video. "
+                "The video may have no captions or no "+ language + " track.",
             )
 
         with open(sub_file, "r", encoding="utf-8") as f:
@@ -614,7 +674,7 @@ async def translate_subtitles(request: TranslateRequest):
     """
     try:
         # Fetch Russian subtitles using yt-dlp
-        raw_segments = _fetch_russian_subtitles(request.url)
+        raw_segments = _fetch_russian_subtitles(request.url, request.language)
 
         # Translate segments
         translated = []
@@ -624,7 +684,8 @@ async def translate_subtitles(request: TranslateRequest):
         texts_to_translate = [s["text"] for s in raw_segments]
         translations = []
         try:
-            batch_res = translator.translate(texts_to_translate, src="ru", dest="en")
+            print(request.language)
+            batch_res = translator.translate(texts_to_translate, src=request.language , dest="en" if request.language == "ru" else "ru")
             if inspect.isawaitable(batch_res):
                 batch_res = await batch_res
             translations = [r.text for r in batch_res]
@@ -646,7 +707,7 @@ async def translate_subtitles(request: TranslateRequest):
             for seg in raw_segments:
                 text = seg["text"]
                 try:
-                    res = translator.translate(text, src="ru", dest="en")
+                    res = translator.translate(text, src=request.language , dest="en" if request.language == "ru" else "ru")
                     if inspect.isawaitable(res):
                         res = await res
                     trans_text = res.text
